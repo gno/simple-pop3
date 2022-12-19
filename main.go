@@ -1,31 +1,34 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/textproto"
 	"os"
 	"strings"
+	"time"
 )
 
-func RunCmd(conn *textproto.Conn, cmd string) {
+func RunCmd(conn *textproto.Conn, cmd string) error {
 
 	_, err := conn.Cmd(cmd)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	resp, err := conn.ReadLine()
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	if !strings.HasPrefix(resp, "+OK") {
-		log.Fatal(fmt.Sprintf("Bad reponse from server: %s\n", resp))
+		return errors.New(fmt.Sprintf("Bad reponse from server: %s\n", resp))
 	}
 
+	return nil
 }
 
 func main() {
@@ -33,15 +36,33 @@ func main() {
 	host := os.Getenv("HOST")
 	user := os.Getenv("USER")
 	pass := os.Getenv("PASS")
+	forever := os.Getenv("FOREVER")
 
-	fmt.Printf("Connecting to %s\n", host)
+	for {
+		fmt.Printf("Connecting to %s\n", host)
 
-	conn, err := textproto.Dial("tcp", fmt.Sprintf("%s:110", host))
-	if err != nil {
-		log.Fatal(err)
+		conn, err := textproto.Dial("tcp", fmt.Sprintf("%s:110", host))
+		if err != nil {
+			log.Println(err)
+			goto next
+		}
+		err = RunCmd(conn, fmt.Sprintf("USER %s", user))
+		if err != nil {
+			log.Println(err)
+			goto next
+		}
+		RunCmd(conn, fmt.Sprintf("PASS %s", pass))
+		if err != nil {
+			log.Println(err)
+			goto next
+		}
+
+	next:
+		if forever == "" {
+			break
+		}
+		sleepy := 5
+		log.Printf("Sleeping for %d minutes...\n", sleepy)
+		time.Sleep(time.Duration(sleepy) * time.Minute)
 	}
-
-	RunCmd(conn, fmt.Sprintf("USER %s", user))
-	RunCmd(conn, fmt.Sprintf("PASS %s", pass))
-
 }
